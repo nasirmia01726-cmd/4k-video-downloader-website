@@ -1,0 +1,62 @@
+<!-- index.html এর জাভাস্ক্রিপ্ট অংশটি এভাবে আপডেট করুন -->
+<script>
+    async function startDownload(quality) {
+        const url = document.getElementById('urlInput').value;
+        const btn = event.currentTarget;
+        const resultSection = document.getElementById('result');
+        
+        // প্রগ্রেস বার তৈরির জন্য UI পরিবর্তন
+        btn.disabled = true;
+        btn.innerHTML = `<i class="fas fa-spinner animate-spin"></i> Initializing...`;
+
+        try {
+            // ১. ডাউনলোড টাস্ক শুরু করা
+            const startRes = await fetch('/start_download', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({url, quality})
+            });
+            const { task_id } = await startRes.json();
+
+            // ২. প্রগ্রেস চেক করা (Polling)
+            const progressInterval = setInterval(async () => {
+                const progRes = await fetch(`/progress/${task_id}`);
+                const progData = await progRes.json();
+                const progress = progData.progress;
+
+                if (progress === "done") {
+                    clearInterval(progressInterval);
+                    btn.innerHTML = "Success! Downloading to device...";
+                    window.location.href = `/download_file/${task_id}/${quality}`;
+                    setTimeout(() => { btn.disabled = false; btn.innerHTML = "Download Done"; }, 3000);
+                } else if (progress.startsWith("error")) {
+                    clearInterval(progressInterval);
+                    alert("Download Failed!");
+                    btn.disabled = false;
+                } else {
+                    // প্রগ্রেস আপডেট দেখানো
+                    btn.innerHTML = `<i class="fas fa-download animate-bounce mr-2"></i> ${progress}% Completed`;
+                    // আপনি চাইলে এখানে একটি আলাদা প্রগ্রেস বারও দেখাতে পারেন
+                }
+            }, 800); // প্রতি ০.৮ সেকেন্ডে আপডেট হবে
+
+        } catch (err) {
+            alert("Connection error!");
+            btn.disabled = false;
+        }
+    }
+
+    // আগের analyzeVideo ফাংশনটি একই থাকবে
+    async function analyzeVideo() {
+        const url = document.getElementById('urlInput').value;
+        if(!url) return alert("Please enter a link!");
+        document.getElementById('loader').classList.remove('hidden');
+        const res = await fetch('/get_info', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url}) });
+        const data = await res.json();
+        document.getElementById('loader').classList.add('hidden');
+        if(data.error) return alert("Error: " + data.error);
+        document.getElementById('videoTitle').innerText = data.title;
+        document.getElementById('thumb').src = data.thumbnail;
+        document.getElementById('result').classList.remove('hidden');
+    }
+</script>
