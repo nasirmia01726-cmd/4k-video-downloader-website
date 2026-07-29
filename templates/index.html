@@ -1,62 +1,106 @@
-<!-- index.html এর জাভাস্ক্রিপ্ট অংশটি এভাবে আপডেট করুন -->
-<script>
-    async function startDownload(quality) {
-        const url = document.getElementById('urlInput').value;
-        const btn = event.currentTarget;
-        const resultSection = document.getElementById('result');
-        
-        // প্রগ্রেস বার তৈরির জন্য UI পরিবর্তন
-        btn.disabled = true;
-        btn.innerHTML = `<i class="fas fa-spinner animate-spin"></i> Initializing...`;
+<!DOCTYPE html>
+<html lang="bn">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>UltraDownloader | 4K Pro</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Hind+Siliguri:wght@400;700&family=Poppins:wght@400;600&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/animate.css/4.1.1/animate.min.css"/>
+    <style>
+        body { font-family: 'Poppins', 'Hind Siliguri', sans-serif; background: #020617; color: white; }
+        .glass { background: rgba(255, 255, 255, 0.03); backdrop-filter: blur(20px); border: 1px solid rgba(255, 255, 255, 0.1); }
+        .btn-grad { background: linear-gradient(90deg, #6366f1, #a855f7); transition: 0.3s; }
+        .btn-grad:hover { transform: scale(1.05); box-shadow: 0 0 20px rgba(168, 85, 247, 0.5); }
+    </style>
+</head>
+<body class="min-h-screen flex flex-col items-center">
 
-        try {
-            // ১. ডাউনলোড টাস্ক শুরু করা
-            const startRes = await fetch('/start_download', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({url, quality})
-            });
-            const { task_id } = await startRes.json();
+    <!-- Header & Lang Toggle -->
+    <nav class="w-full max-w-6xl flex justify-between items-center p-6 animate__animated animate__fadeIn">
+        <div class="text-2xl font-bold text-indigo-500">ULTRA<span class="text-white">DL</span></div>
+        <button onclick="toggleLang()" id="langBtn" class="glass px-4 py-1 rounded-full text-sm font-bold border border-indigo-500">English</button>
+    </nav>
 
-            // ২. প্রগ্রেস চেক করা (Polling)
-            const progressInterval = setInterval(async () => {
-                const progRes = await fetch(`/progress/${task_id}`);
-                const progData = await progRes.json();
-                const progress = progData.progress;
+    <!-- Main Content -->
+    <main class="w-full max-w-4xl text-center px-4 mt-10">
+        <h1 id="title" class="text-4xl md:text-6xl font-black mb-6 animate__animated animate__zoomIn">
+            Download Anything in <span class="text-indigo-500">4K Quality</span>
+        </h1>
+        <p id="subtitle" class="text-gray-400 mb-10 animate__animated animate__fadeIn">Paste link from YouTube, FB, Insta, or TikTok</p>
 
-                if (progress === "done") {
-                    clearInterval(progressInterval);
-                    btn.innerHTML = "Success! Downloading to device...";
-                    window.location.href = `/download_file/${task_id}/${quality}`;
-                    setTimeout(() => { btn.disabled = false; btn.innerHTML = "Download Done"; }, 3000);
-                } else if (progress.startsWith("error")) {
-                    clearInterval(progressInterval);
-                    alert("Download Failed!");
-                    btn.disabled = false;
-                } else {
-                    // প্রগ্রেস আপডেট দেখানো
-                    btn.innerHTML = `<i class="fas fa-download animate-bounce mr-2"></i> ${progress}% Completed`;
-                    // আপনি চাইলে এখানে একটি আলাদা প্রগ্রেস বারও দেখাতে পারেন
-                }
-            }, 800); // প্রতি ০.৮ সেকেন্ডে আপডেট হবে
+        <!-- Search Box -->
+        <div class="glass p-2 rounded-2xl flex flex-col md:flex-row gap-2 animate__animated animate__fadeInUp">
+            <input id="urlInput" type="text" placeholder="Paste link here..." class="flex-1 bg-transparent p-4 outline-none text-white">
+            <button onclick="analyzeVideo()" id="mainBtn" class="btn-grad px-10 py-4 rounded-xl font-bold">Generate</button>
+        </div>
 
-        } catch (err) {
-            alert("Connection error!");
-            btn.disabled = false;
+        <!-- Result Section -->
+        <div id="loader" class="hidden mt-10"><div class="w-10 h-10 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin mx-auto"></div></div>
+
+        <div id="result" class="hidden mt-12 glass p-6 rounded-3xl text-left animate__animated animate__fadeInUp">
+            <div class="flex flex-col md:flex-row gap-6">
+                <img id="thumb" src="" class="w-full md:w-64 rounded-2xl shadow-xl">
+                <div class="flex-1">
+                    <h3 id="videoTitle" class="text-xl font-bold mb-4"></h3>
+                    <div class="grid grid-cols-1 gap-3">
+                        <button onclick="startDownload('4k')" class="flex justify-between items-center bg-indigo-600/20 p-4 rounded-xl hover:bg-indigo-600/40 transition">
+                            <span><i class="fas fa-crown mr-2 text-yellow-400"></i> 4K Ultra HD</span>
+                            <span class="bg-indigo-600 px-3 py-1 rounded-lg text-xs">Download</span>
+                        </button>
+                        <button onclick="startDownload('1080')" class="flex justify-between items-center bg-blue-600/20 p-4 rounded-xl hover:bg-blue-600/40 transition">
+                            <span><i class="fas fa-hd mr-2 text-blue-400"></i> 1080p Full HD</span>
+                            <span class="bg-blue-600 px-3 py-1 rounded-lg text-xs">Download</span>
+                        </button>
+                        <button onclick="startDownload('mp3')" class="flex justify-between items-center bg-emerald-600/20 p-4 rounded-xl hover:bg-emerald-600/40 transition">
+                            <span><i class="fas fa-music mr-2 text-emerald-400"></i> MP3 Audio</span>
+                            <span class="bg-emerald-600 px-3 py-1 rounded-lg text-xs">Download</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        let currentLang = 'en';
+        const text = {
+            en: { title: "Download Anything in <span class='text-indigo-500'>4K Quality</span>", subtitle: "Paste link from YouTube, FB, Insta, or TikTok", btn: "Generate", placeholder: "Paste link here..." },
+            bn: { title: "ডাউনলোড করুন <span class='text-indigo-500'>৪কে কোয়ালিটিতে</span>", subtitle: "ইউটিউব, ফেসবুক বা টিকটক লিঙ্ক পেস্ট করুন", btn: "জেনারেট", placeholder: "লিঙ্কটি এখানে দিন..." }
+        };
+
+        function toggleLang() {
+            currentLang = currentLang === 'en' ? 'bn' : 'en';
+            document.getElementById('langBtn').innerText = currentLang === 'en' ? 'Bangla' : 'English';
+            document.getElementById('title').innerHTML = text[currentLang].title;
+            document.getElementById('subtitle').innerText = text[currentLang].subtitle;
+            document.getElementById('mainBtn').innerText = text[currentLang].btn;
+            document.getElementById('urlInput').placeholder = text[currentLang].placeholder;
         }
-    }
 
-    // আগের analyzeVideo ফাংশনটি একই থাকবে
-    async function analyzeVideo() {
-        const url = document.getElementById('urlInput').value;
-        if(!url) return alert("Please enter a link!");
-        document.getElementById('loader').classList.remove('hidden');
-        const res = await fetch('/get_info', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url}) });
-        const data = await res.json();
-        document.getElementById('loader').classList.add('hidden');
-        if(data.error) return alert("Error: " + data.error);
-        document.getElementById('videoTitle').innerText = data.title;
-        document.getElementById('thumb').src = data.thumbnail;
-        document.getElementById('result').classList.remove('hidden');
-    }
-</script>
+        async function analyzeVideo() {
+            const url = document.getElementById('urlInput').value;
+            if(!url) return alert("Please enter a link!");
+            document.getElementById('loader').classList.remove('hidden');
+            const res = await fetch('/get_info', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url}) });
+            const data = await res.json();
+            document.getElementById('loader').classList.add('hidden');
+            if(data.error) return alert("Error: " + data.error);
+            document.getElementById('videoTitle').innerText = data.title;
+            document.getElementById('thumb').src = data.thumbnail;
+            document.getElementById('result').classList.remove('hidden');
+        }
+
+        async function startDownload(quality) {
+            const url = document.getElementById('urlInput').value;
+            const btn = event.currentTarget;
+            btn.innerHTML = "Processing...";
+            const res = await fetch('/process_download', { method: 'POST', headers: {'Content-Type': 'application/json'}, body: JSON.stringify({url, quality}) });
+            const data = await res.json();
+            if(data.download_url) { window.location.href = data.download_url; }
+            btn.innerHTML = quality === '4k' ? "4K Ultra HD" : quality === '1080' ? "1080p HD" : "MP3 Audio";
+        }
+    </script>
+</body>
+</html>
