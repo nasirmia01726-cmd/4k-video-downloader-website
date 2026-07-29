@@ -1,93 +1,98 @@
 import os
 import uuid
-import threading
 from flask import Flask, render_template, request, jsonify, send_from_directory
 import yt_dlp
 
 app = Flask(__name__)
 
+# ডাউনলোড করা ফাইল সাময়িকভাবে রাখার জন্য ফোল্ডার
 DOWNLOAD_FOLDER = 'downloads'
 if not os.path.exists(DOWNLOAD_FOLDER):
     os.makedirs(DOWNLOAD_FOLDER)
-
-# ডাউনলোডের প্রগ্রেস সেভ রাখার জন্য
-progress_db = {}
-
-def progress_hook(d, task_id):
-    if d['status'] == 'downloading':
-        # পারসেন্টেজ বের করা
-        p = d.get('_percent_str', '0%').replace('%', '').strip()
-        progress_db[task_id] = p
-    elif d['status'] == 'finished':
-        progress_db[task_id] = '100'
 
 @app.route('/')
 def index():
     return render_template('index.html')
 
+# ভিডিওর তথ্য (Title, Thumbnail) বের করার রুট
 @app.route('/get_info', methods=['POST'])
 def get_info():
-    url = request.json.get('url')
-    ydl_opts = {'quiet': True}
+    data = request.json
+    url = data.get('url')
+    if not url:
+        return jsonify({"error": "লিঙ্ক দেওয়া হয়নি"}), 400
+
+    ydl_opts = {
+        'quiet': True,
+        'no_warnings': True,
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/110.0.0.0 Safari/537.36'
+    }
+
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
             return jsonify({
                 "title": info.get('title', 'Video'),
-                "thumbnail": info.get('thumbnail', '')
+                "thumbnail": info.get('thumbnail', ''),
+                "duration": info.get('duration_string', '0:00')
             })
     except Exception as e:
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": "ভিডিওর তথ্য পাওয়া যায়নি। লিঙ্কটি চেক করুন।"}), 500
 
-@app.route('/start_download', methods=['POST'])
-def start_download():
+# ভিডিও ডাউনলোড এবং প্রসেস করার রুট
+@app.route('/process_download', methods=['POST'])
+def process_download():
     data = request.json
     url = data.get('url')
-    quality = data.get('quality')
-    task_id = str(uuid.uuid4())
-    
-    # ব্যাকগ্রাউন্ডে ডাউনলোড শুরু করার জন্য থ্রেড ব্যবহার
-    thread = threading.Thread(target=download_task, args=(url, quality, task_id))
-    thread.start()
-    
-    return jsonify({"task_id": task_id})
+    quality = data.get('quality') # '4k', '1080', 'mp3'
 
-def download_task(url, quality, task_id):
+    if not url:
+        return jsonify({"error": "URL missing"}), 400
+
+    # ইউনিক আইডি তৈরি করা যাতে ফাইল ওভারল্যাপ না হয়
+    file_id = str(uuid.uuid4())
     ext = 'mp3' if quality == 'mp3' else 'mp4'
-    output_path = os.path.join(DOWNLOAD_FOLDER, f"{task_id}.%(ext)s")
-    
-    fmt = 'bestvideo[height<=2160]+bestaudio/best' if quality == '4k' else \
-          'bestvideo[height<=1080]+bestaudio/best' if quality == '1080' else \
-          'bestaudio/best'
+    output_filename = f"{file_id}.{ext}"
+    output_path = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
+
+    # কোয়ালিটি সেটিংস
+    if quality == '4k':
+        format_selector = 'bestvideo[height<=2160]+bestaudio/best'
+    elif quality == '1080':
+        format_selector = 'bestvideo[height<=1080]+bestaudio/best'
+    else:
+        format_selector = 'bestaudio/best'
 
     ydl_opts = {
-        'format': fmt,
+        'format': format_selector,
         'outtmpl': output_path,
         'merge_output_format': 'mp4' if quality != 'mp3' else None,
-        'progress_hooks': [lambda d: progress_hook(d, task_id)],
-        'quiet': True
+        'quiet': True,
     }
 
+    # MP3 কনভার্ট করার জন্য সেটিংস
     if quality == 'mp3':
-        ydl_opts['postprocessors'] = [{'key': 'FFmpegExtractAudio', 'preferredcodec': 'mp3', 'preferredquality': '192'}]
+        ydl_opts['postprocessors'] = [{
+            'key': 'FFmpegExtractAudio',
+            'preferredcodec': 'mp3',
+            'preferredquality': '192',
+        }]
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             ydl.download([url])
-            progress_db[task_id] = "done" # সফলভাবে শেষ
+            
+            # প্রসেস শেষে আসল ফাইলের নাম বের করা
+            final_file = f"{file_id}.{ext}"
+            return jsonify({"download_url": f"/download_file/{final_file}"})
     except Exception as e:
-        progress_db[task_id] = f"error: {str(e)}"
+        return jsonify({"error": "ডাউনলোড ব্যর্থ হয়েছে। আবার চেষ্টা করুন।"}), 500
 
-@app.route('/progress/<task_id>')
-def get_progress(task_id):
-    # ফ্রন্টেন্ড এই রুটে বারবার রিকোয়েস্ট পাঠিয়ে পারসেন্টেজ জানবে
-    return jsonify({"progress": progress_db.get(task_id, "0")})
-
-@app.route('/download_file/<task_id>/<quality>')
-def download_file(task_id, quality):
-    ext = 'mp3' if quality == 'mp3' else 'mp4'
-    filename = f"{task_id}.{ext}"
+# ইউজারকে ফাইল সার্ভ করার রুট
+@app.route('/download_file/<filename>')
+def download_file(filename):
     return send_from_directory(DOWNLOAD_FOLDER, filename, as_attachment=True)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True, threaded=True)
+    # Render বা ইন্টারনেটে হোস্ট করার জন্য host='0.0.0.0' জরুরি
+    app.run(host='0.0.0.0', port=5000)
