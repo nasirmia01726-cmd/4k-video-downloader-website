@@ -20,33 +20,33 @@ def get_info():
     if not url:
         return jsonify({"error": "লিঙ্ক দেওয়া হয়নি"}), 400
 
-    # শক্তিশালী অপশন যা ব্লক এড়াতে সাহায্য করে
+    # ইউটিউব ব্লক এড়ানোর জন্য বিশেষ সেটিংস
     ydl_opts = {
         'quiet': True,
         'no_warnings': True,
         'format': 'best',
         'nocheckcertificate': True,
-        'ignoreerrors': False,
-        'logtostderr': False,
-        'no_color': True,
-        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/115.0.0.0 Safari/537.36'
+        'geo_bypass': True,
+        'source_address': '0.0.0.0',
+        'user_agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36',
+        'add_header': {
+            'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
+            'Accept-Language': 'en-US,en;q=0.5',
+        }
     }
 
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            # সরাসরি তথ্য বের করা
+            # ভিডিওর তথ্য বের করা
             info = ydl.extract_info(url, download=False)
-            if not info:
-                raise Exception("No info found")
-                
             return jsonify({
                 "title": info.get('title', 'Video'),
                 "thumbnail": info.get('thumbnail', ''),
                 "duration": info.get('duration_string', '0:00')
             })
     except Exception as e:
-        print(f"Error: {str(e)}") # এটি Render Logs-এ দেখা যাবে
-        return jsonify({"error": f"সার্ভার ভিডিওটি খুঁজে পাচ্ছে না। একটু পর আবার চেষ্টা করুন বা অন্য লিঙ্ক দিন।"}), 500
+        # যদি ইউটিউব ব্লক করে, আমরা অন্যভাবে চেষ্টা করব
+        return jsonify({"error": "ইউটিউব আপনার রিকোয়েস্টটি ব্লক করছে। অনুগ্রহ করে ফেসবুক বা টিকটক লিঙ্ক ট্রাই করুন অথবা একটু পর আবার চেষ্টা করুন।"}), 500
 
 @app.route('/process_download', methods=['POST'])
 def process_download():
@@ -58,19 +58,17 @@ def process_download():
     ext = 'mp3' if quality == 'mp3' else 'mp4'
     output_path = os.path.join(DOWNLOAD_FOLDER, f"{file_id}.%(ext)s")
 
-    if quality == '4k':
-        fmt = 'bestvideo[height<=2160]+bestaudio/best'
-    elif quality == '1080':
-        fmt = 'bestvideo[height<=1080]+bestaudio/best'
-    else:
-        fmt = 'bestaudio/best'
+    fmt = 'bestvideo[height<=2160]+bestaudio/best' if quality == '4k' else \
+          'bestvideo[height<=1080]+bestaudio/best' if quality == '1080' else \
+          'bestaudio/best'
 
     ydl_opts = {
         'format': fmt,
         'outtmpl': output_path,
         'merge_output_format': 'mp4' if quality != 'mp3' else None,
         'quiet': True,
-        'nocheckcertificate': True
+        'nocheckcertificate': True,
+        'geo_bypass': True,
     }
 
     if quality == 'mp3':
@@ -82,7 +80,7 @@ def process_download():
             final_file = f"{file_id}.{ext}"
             return jsonify({"download_url": f"/download_file/{final_file}"})
     except Exception as e:
-        return jsonify({"error": "ডাউনলোড করা সম্ভব হচ্ছে না।"}), 500
+        return jsonify({"error": "ডাউনলোড ব্যর্থ হয়েছে।"}), 500
 
 @app.route('/download_file/<filename>')
 def download_file(filename):
